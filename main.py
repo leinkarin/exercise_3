@@ -109,17 +109,8 @@ def check_gpu():
     return device
 
 
-def plot_lost_values(ep_loss_values):
-    # Plot the loss values through epochs
-    plt.plot(ep_loss_values, marker='o')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss Value')
-    plt.title('Training Loss Progression')
-    plt.show()
-
-
-def question_9_3():
-    device = check_gpu()
+def load_data(device):
+    # create datasets
     train_dataset = Dataset(X_train, Y_train, device)
     test_dataset = Dataset(X_test, Y_test, device)
     val_dataset = Dataset(X_val, Y_val, device)
@@ -131,94 +122,121 @@ def question_9_3():
                                                )
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=True)
-
-    validation_accuracies = np.zeros([1, 3])
-
-    # train the model with learning rate 0.1
-    model_1 = compute_accuracies(device, train_dataset, train_loader, 0.1)
-    model_1.eval()  # set the model to evaluation mode
-    evaluate(device, model_1, test_dataset, test_loader, val_dataset, val_loader)
-
-    # train the model with learning rate 0.01
-    model_2 = compute_accuracies(device, train_dataset, train_loader, 0.01)
-    model_2.eval()  # set the model to evaluation mode
-    evaluate(device, model_2, test_dataset, test_loader, val_dataset, val_loader)
-
-    # train the model with learning rate 0.001
-    model_3 = compute_accuracies(device, train_dataset, train_loader, 0.001)
-    model_3.eval()  # set the model to evaluation mode
-    evaluate(device, model_3, test_dataset, test_loader, val_dataset, val_loader)
-
-    plot_decision_boundaries(model_2, X_test, Y_test, "Model with the best validation accuracy (learning rate= 0.01)")
+    return train_dataset, test_dataset, val_dataset, train_loader, test_loader, val_loader
 
 
-def compute_accuracies(device, train_dataset, train_loader, learning_rate):
-    # Instantiate the model, loss function, and optimizer
-    # initialize the model
+def plot_lost_values(ep_loss_values):
+    # Plot the loss values through epochs
+    plt.plot(ep_loss_values, marker='o')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss Value')
+    plt.title('Training Loss Progression')
+    plt.show()
+
+
+def init_model(device, train_dataset):
+    # Instantiate the model
     number_of_classes = len(torch.unique(train_dataset.labels))
     model = Logistic_Regression(X_train.shape[1], number_of_classes)
     model.to(device)
+    return model
+
+
+def train_model(device, model, optimizer, criterion, lr_scheduler, dataset, data_loader):
+    loss_values = []
+    ep_correct_preds = 0.
+    model.train()  # set the model to training mode
+    for inputs, labels in data_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs.squeeze(), labels)
+        loss.backward()
+        optimizer.step()
+
+        # Store the loss values for plotting
+        loss_values.append(loss.item())
+        ep_correct_preds += torch.sum(torch.argmax(outputs, dim=1) == labels).item()
+
+    lr_scheduler.step()
+
+    mean_loss = np.mean(loss_values)
+    ep_train_accuracy = ep_correct_preds / len(dataset)
+    return mean_loss, ep_train_accuracy
+
+
+def evaluate_model(device, model, dataset, data_loader):
+    model.eval()  # set the model to evaluation mode
+    ep_correct_preds = 0.
+    for inputs, labels in data_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        outputs = model(inputs)
+        outputs = nn.functional.softmax(outputs, dim=1)
+        _, predicted = torch.max(outputs, dim=1)
+        ep_correct_preds += torch.sum(predicted == labels).item()
+
+    ep_test_accuracy = ep_correct_preds / len(dataset)
+    return ep_test_accuracy
+
+
+def create_model(learning_rate):
+    device = check_gpu()
+
+    # Create datasets and data loaders
+    train_dataset, test_dataset, val_dataset, train_loader, test_loader, val_loader = load_data(device)
+
+    # Instantiate the model,criterion, optimizer, lr_scheduler
+    model = init_model(device, train_dataset)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.3)
 
     # Train the model for a few epochs with GPU acceleration
     num_epochs = 10
-    ep_loss_train = []
+    train_loss_values = np.zeros(num_epochs)
+    test_loss_values = np.zeros(num_epochs)
+    val_loss_values = np.zeros(num_epochs)
+    train_accuracies = np.zeros(num_epochs)
+    test_accuracies = np.zeros(num_epochs)
+    val_accuracies = np.zeros(num_epochs)
 
     for epoch in range(num_epochs):
-        loss_values = []
-        ep_correct_preds = 0.
-        model.train()  # set the model to training mode
-        for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs.squeeze(), labels)
-            loss.backward()
-            optimizer.step()
+        # Train the model
+        train_loss_values[epoch], train_accuracies[epoch] = train_model(device, model, optimizer, criterion,
+                                                                        lr_scheduler,
+                                                                        train_dataset, train_loader)
 
-            # Store the loss values for plotting
-            loss_values.append(loss.item())
-            ep_correct_preds += torch.sum(torch.argmax(outputs, dim=1) == labels).item()
+        # Evaluate the model on the test set
+        model.eval()
+        test_loss_values[epoch], test_accuracies[epoch] = train_model(device, model, optimizer, criterion, lr_scheduler,
+                                                                      test_dataset, test_loader)
 
-        lr_scheduler.step()
+        # Evaluate the model on the validation set
+        val_loss_values[epoch], val_accuracies[epoch] = train_model(device, model, optimizer, criterion, lr_scheduler,
+                                                                    val_dataset, val_loader)
 
-        mean_loss = np.mean(loss_values)
-        ep_accuracy = ep_correct_preds / len(train_loader)
-        ep_loss_train.append(mean_loss)
-
-        print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {mean_loss.item():.4f}, Accuracy: {ep_accuracy:.2f}')
-
-    # Plot the loss values through epochs
-    plot_lost_values(ep_loss_train)
+        # print(
+        #     f'Epoch [{epoch + 1}/{num_epochs}], Loss: {mean_loss.item():.4f}, Train Accuracy: {ep_train_accuracy:.4f},'
+        #     f' Test Accuracy: {ep_test_accuracy:.4f}, Validation Accuracy: {ep_val_accuracy:.4f}')
+    model.set_accuracies(train_accuracies, test_accuracies, val_accuracies)
     return model
 
 
-def evaluate(device, model, test_dataset, test_loader, val_dataset, val_loader):
-    # Evaluate the model on the test set
-    correct_predictions = 0.
-    for inputs, labels in test_loader:
-        inputs, labels = inputs.to(device), labels.to(device)
-        outputs = model(inputs)
-        outputs = nn.functional.softmax(outputs, dim=1)
-        _, predicted = torch.max(outputs, dim=1)
-        correct_predictions += torch.sum(predicted == labels).item()
+def question_9_3():
+    model1 = create_model(0.1)
+    model2 = create_model(0.01)
+    model3 = create_model(0.001)
+    print(
+        f"Model with learning rate 0.1: Train Accuracy: {np.mean(model1.train_accuracies):.4f}, Test Accuracy: {np.mean(model1.test_accuracies):.4f}, "
+        f"Validation Accuracy: {np.mean(model1.val_accuracies):.4f}")
+    print(
+        f"Model with learning rate 0.01: Train Accuracy: {np.mean(model2.train_accuracies):.4f}, Test Accuracy: {np.mean(model2.test_accuracies):.4f}, "
+        f"Validation Accuracy: {np.mean(model2.val_accuracies):.4f}")
+    print(
+        f"Model with learning rate 0.001: Train Accuracy: {np.mean(model3.train_accuracies):.4f}, Test Accuracy: {np.mean(model3.test_accuracies):.4f},"
+        f" Validation Accuracy: {np.mean(model3.val_accuracies):.4f}")
 
-    print(f'Test Accuracy: {correct_predictions / len(test_dataset):.2f}')
-
-    # Evaluate the model on the validation set
-    correct_predictions = 0.
-    for inputs, labels in val_loader:
-        inputs, labels = inputs.to(device), labels.to(device)
-        outputs = model(inputs)
-        outputs = nn.functional.softmax(outputs, dim=1)
-        _, predicted = torch.max(outputs, dim=1)
-        correct_predictions += torch.sum(predicted == labels).item()
-
-    validation_accuracy = correct_predictions / len(val_dataset)
-    print(f'Validation Accuracy: {correct_predictions / len(val_dataset):.2f}')
-    return validation_accuracy
+    plot_decision_boundaries(model3, X_test, Y_test, "Model with the best validation accuracy (learning rate= 0.01)")
 
 
 if __name__ == '__main__':
