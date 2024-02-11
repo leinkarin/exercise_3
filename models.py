@@ -53,6 +53,9 @@ class Logistic_Regression(nn.Module):
         self.train_accuracies = None
         self.test_accuracies = None
         self.val_accuracies = None
+        self.train_losses = None
+        self.test_losses = None
+        self.val_losses = None
         """
         :param input_dim: the number of features (2- long, lat)
         :param output_dim: the number of classes (2- 0,1)
@@ -96,11 +99,16 @@ class Logistic_Regression(nn.Module):
         self.test_accuracies = test_accuracies
         self.val_accuracies = val_accuracies
 
-    def get_train_accuracies(self):
-        return self.train_accuracies
+    def set_losses(self, train_losses, test_losses, val_losses):
+        self.train_losses = train_losses
+        self.test_losses = test_losses
+        self.val_losses = val_losses
 
-    def get_test_accuracies(self):
-        return self.test_accuracies
-
-    def get_val_accuracies(self):
-        return self.val_accuracies
+    # def get_train_accuracies(self):
+    #     return self.train_accuracies
+    #
+    # def get_test_accuracies(self):
+    #     return self.test_accuracies
+    #
+    # def get_val_accuracies(self):
+    #     return self.val_accuracies

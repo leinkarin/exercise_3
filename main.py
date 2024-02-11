@@ -125,12 +125,15 @@ def load_data(device):
     return train_dataset, test_dataset, val_dataset, train_loader, test_loader, val_loader
 
 
-def plot_lost_values(ep_loss_values):
+def plot_loss_values(train_losses, test_losses, val_losses, num_echos):
     # Plot the loss values through epochs
-    plt.plot(ep_loss_values, marker='o')
+    plt.plot(np.arange(num_echos), train_losses, marker='o', color='blue', label='Train losses')
+    plt.plot(np.arange(num_echos), test_losses, marker='o', color='green', label='Test losses')
+    plt.plot(np.arange(num_echos), val_losses, marker='o', color='orange', label='Validation losses')
     plt.xlabel('Epochs')
     plt.ylabel('Loss Value')
     plt.title('Training Loss Progression')
+    plt.legend()
     plt.show()
 
 
@@ -219,6 +222,7 @@ def create_model(learning_rate):
         #     f'Epoch [{epoch + 1}/{num_epochs}], Loss: {mean_loss.item():.4f}, Train Accuracy: {ep_train_accuracy:.4f},'
         #     f' Test Accuracy: {ep_test_accuracy:.4f}, Validation Accuracy: {ep_val_accuracy:.4f}')
     model.set_accuracies(train_accuracies, test_accuracies, val_accuracies)
+    model.set_losses(train_loss_values, test_loss_values, val_loss_values)
     return model
 
 
@@ -236,7 +240,8 @@ def question_9_3():
         f"Model with learning rate 0.001: Train Accuracy: {np.mean(model3.train_accuracies):.4f}, Test Accuracy: {np.mean(model3.test_accuracies):.4f},"
         f" Validation Accuracy: {np.mean(model3.val_accuracies):.4f}")
 
-    plot_decision_boundaries(model3, X_test, Y_test, "Model with the best validation accuracy (learning rate= 0.01)")
+    # plot_decision_boundaries(model3, X_test, Y_test, "Model with the best validation accuracy (learning rate= 0.01)")
+    plot_loss_values(model3.train_losses, model3.test_losses, model3.val_losses, 10)
 
 
 if __name__ == '__main__':
