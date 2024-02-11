@@ -48,15 +48,17 @@ class Ridge_Regression:
 
 
 class Logistic_Regression(nn.Module):
+
     def __init__(self, input_dim, output_dim):
+        """
+        :param input_dim: the number of features (2- long, lat)
+        :param output_dim: the number of classes (2- 0,1)
+        """
         super(Logistic_Regression, self).__init__()
 
-        ########## YOUR CODE HERE ##########
-
         # define a linear operation.
-
+        self.linear = nn.Linear(input_dim, output_dim)
         ####################################
-        pass
 
     def forward(self, x):
         """
@@ -66,15 +68,14 @@ class Logistic_Regression(nn.Module):
         """
         # compute the output of the linear operator
 
-        ########## YOUR CODE HERE ##########
+        output = self.linear(x)
+        return output
 
         # return the transformed input.
         # first perform the linear operation
         # should be a single line of code.
 
         ####################################
-
-        pass
 
     def predict(self, x):
         """
