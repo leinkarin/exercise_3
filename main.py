@@ -109,7 +109,7 @@ def check_gpu():
     return device
 
 
-def load_data(device):
+def load_data(device, X_train, Y_train, X_test, Y_test, X_val, Y_val):
     # create datasets
     train_dataset = Dataset(X_train, Y_train, device)
     test_dataset = Dataset(X_test, Y_test, device)
@@ -132,17 +132,19 @@ def plot_loss_values(train_losses, test_losses, val_losses, num_echos):
     plt.plot(np.arange(num_echos), val_losses, marker='o', color='orange', label='Validation losses')
     plt.xlabel('Epochs')
     plt.ylabel('Loss Value')
-    plt.title('Training Loss Progression')
+    plt.title('Loss values vs epochs')
     plt.legend()
     plt.show()
 
 
-def init_model(device, train_dataset):
+def init_model(device, train_dataset, learning_rate, step_size, gamma):
     # Instantiate the model
     number_of_classes = len(torch.unique(train_dataset.labels))
     model = Logistic_Regression(X_train.shape[1], number_of_classes)
     model.to(device)
-    return model
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+    return model, optimizer, lr_scheduler
 
 
 def train_model(device, model, optimizer, criterion, lr_scheduler, dataset, data_loader):
@@ -182,20 +184,19 @@ def evaluate_model(device, model, dataset, data_loader):
     return ep_test_accuracy
 
 
-def create_model(learning_rate):
+def create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, num_epochs, step_size=10, gamma=0):
     device = check_gpu()
 
     # Create datasets and data loaders
-    train_dataset, test_dataset, val_dataset, train_loader, test_loader, val_loader = load_data(device)
+    train_dataset, test_dataset, val_dataset, train_loader, test_loader, val_loader = load_data(device, X_train,
+                                                                                                Y_train, X_test, Y_test,
+                                                                                                X_val, Y_val)
 
     # Instantiate the model,criterion, optimizer, lr_scheduler
-    model = init_model(device, train_dataset)
+    model, optimizer, lr_scheduler = init_model(device, train_dataset, learning_rate, step_size, gamma)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.3)
 
     # Train the model for a few epochs with GPU acceleration
-    num_epochs = 10
     train_loss_values = np.zeros(num_epochs)
     test_loss_values = np.zeros(num_epochs)
     val_loss_values = np.zeros(num_epochs)
@@ -227,9 +228,11 @@ def create_model(learning_rate):
 
 
 def question_9_3():
-    model1 = create_model(0.1)
-    model2 = create_model(0.01)
-    model3 = create_model(0.001)
+    num_epochs = 10
+    # create three models with different learning rates
+    model1 = create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate=0.1, num_epochs=num_epochs)
+    model2 = create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, 0.01, num_epochs)
+    model3 = create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, 0.001, num_epochs)
     print(
         f"Model with learning rate 0.1: Train Accuracy: {np.mean(model1.train_accuracies):.4f}, Test Accuracy: {np.mean(model1.test_accuracies):.4f}, "
         f"Validation Accuracy: {np.mean(model1.val_accuracies):.4f}")
@@ -240,8 +243,21 @@ def question_9_3():
         f"Model with learning rate 0.001: Train Accuracy: {np.mean(model3.train_accuracies):.4f}, Test Accuracy: {np.mean(model3.test_accuracies):.4f},"
         f" Validation Accuracy: {np.mean(model3.val_accuracies):.4f}")
 
-    # plot_decision_boundaries(model3, X_test, Y_test, "Model with the best validation accuracy (learning rate= 0.01)")
+    plot_decision_boundaries(model3, X_test, Y_test, "Model with the best validation accuracy (learning rate= 0.001)")
     plot_loss_values(model3.train_losses, model3.test_losses, model3.val_losses, 10)
+
+
+def question_9_4():
+    # read and load the data sets
+    X_train_mc, Y_train_mc = read_data('train_multiclass.csv')
+    X_test_mc, Y_test_mc = read_data('test_multiclass.csv')
+    X_val_mc, Y_val_mc = read_data('validation_multiclass.csv')
+
+    # create three models with different learning rates
+    model1 = create_model(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc, learning_rate=0.01,
+                          num_epochs=30)
+    model2 = create_model(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc, 0.001, 30)
+    model3 = create_model(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc, 0.0003, 30)
 
 
 if __name__ == '__main__':
