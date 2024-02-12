@@ -1,3 +1,6 @@
+import numpy as np
+import sklearn.tree
+
 from models import *
 from helpers import *
 from dataset import *
@@ -99,7 +102,7 @@ def load_data(device, X_train, Y_train, X_test, Y_test, X_val, Y_val):
 def init_model(device, train_dataset, X_train, learning_rate, step_size, gamma):
     # Instantiate the model
     number_of_classes = len(torch.unique(train_dataset.labels))
-    model = Logistic_Regression(X_train.shape[1], number_of_classes)
+    model = Logistic_Regression(X_train.shape[1], number_of_classes, learning_rate)
     model.to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
@@ -129,18 +132,23 @@ def train_model(device, model, optimizer, criterion, lr_scheduler, dataset, data
     return mean_loss, ep_train_accuracy
 
 
-def evaluate_model(device, model, dataset, data_loader):
+def evaluate_model(device, model, criterion, dataset, data_loader):
     model.eval()  # set the model to evaluation mode
+    loss_values = []
     ep_correct_preds = 0.
     for inputs, labels in data_loader:
         inputs, labels = inputs.to(device), labels.to(device)
         outputs = model(inputs)
-        outputs = nn.functional.softmax(outputs, dim=1)
-        _, predicted = torch.max(outputs, dim=1)
-        ep_correct_preds += torch.sum(predicted == labels).item()
+        # outputs = nn.functional.softmax(outputs, dim=1)
+        loss = criterion(outputs.squeeze(), labels)
+        # loss.backward()
+        # _, predicted = torch.max(outputs, dim=1)
+        loss_values.append(loss.item())
+        ep_correct_preds += torch.sum(torch.argmax(outputs, dim=1) == labels).item()
 
-    ep_test_accuracy = ep_correct_preds / len(dataset)
-    return ep_test_accuracy
+    mean_loss = np.mean(loss_values)
+    ep_accuracy = ep_correct_preds / len(dataset)
+    return mean_loss, ep_accuracy
 
 
 def create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, num_epochs, step_size=10, gamma=0):
@@ -155,7 +163,7 @@ def create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, 
     model, optimizer, lr_scheduler = init_model(device, train_dataset, X_train, learning_rate, step_size, gamma)
     criterion = nn.CrossEntropyLoss()
 
-    # Train the model for a few epochs with GPU acceleration
+    # define numpy arrays to keep all the values
     train_loss_values = np.zeros(num_epochs)
     test_loss_values = np.zeros(num_epochs)
     val_loss_values = np.zeros(num_epochs)
@@ -170,17 +178,15 @@ def create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, 
                                                                         train_dataset, train_loader)
 
         # Evaluate the model on the test set
-        model.eval()
-        test_loss_values[epoch], test_accuracies[epoch] = train_model(device, model, optimizer, criterion, lr_scheduler,
-                                                                      test_dataset, test_loader)
+        test_loss_values[epoch], test_accuracies[epoch] = evaluate_model(device, model, criterion,
+                                                                         test_dataset, test_loader)
 
         # Evaluate the model on the validation set
-        val_loss_values[epoch], val_accuracies[epoch] = train_model(device, model, optimizer, criterion, lr_scheduler,
-                                                                    val_dataset, val_loader)
+        val_loss_values[epoch], val_accuracies[epoch] = evaluate_model(device, model, criterion,
+                                                                       val_dataset, val_loader)
 
-        # print(
-        #     f'Epoch [{epoch + 1}/{num_epochs}], Loss: {mean_loss.item():.4f}, Train Accuracy: {ep_train_accuracy:.4f},'
-        #     f' Test Accuracy: {ep_test_accuracy:.4f}, Validation Accuracy: {ep_val_accuracy:.4f}')
+    print(
+        f"model= {learning_rate}\n, train: {train_accuracies}\n, test: {test_accuracies}\n, validation:{val_accuracies}")
     model.set_accuracies(train_accuracies, test_accuracies, val_accuracies)
     model.set_losses(train_loss_values, test_loss_values, val_loss_values)
     return model
@@ -233,8 +239,8 @@ def question_9_4():
     X_train_mc, Y_train_mc = read_data('train_multiclass.csv')
     X_test_mc, Y_test_mc = read_data('test_multiclass.csv')
     X_val_mc, Y_val_mc = read_data('validation_multiclass.csv')
-    num_epochs = 30
 
+    num_epochs = 30
     learning_rates = [0.01, 0.001, 0.0003]
     models = []
 
@@ -245,14 +251,14 @@ def question_9_4():
                          num_epochs=num_epochs, step_size=5, gamma=0.3))
 
     # create a list of the mean test and validation accuracies of every model
-    mean_test_accuracies = []
-    mean_val_accuracies = []
+    last_test_accuracies = []
+    last_val_accuracies = []
     for model in models:
-        mean_test_accuracies.append(np.mean(model.test_accuracies))
-        mean_val_accuracies.append(np.mean(model.val_accuracies))
+        last_test_accuracies.append(model.test_accuracies[num_epochs - 1])
+        last_val_accuracies.append(model.val_accuracies[num_epochs - 1])
 
     # plot a graph learning rate vs accuracies
-    plot_values = [(mean_test_accuracies, 'Test accuracy'), (mean_val_accuracies, 'Validation accuracy')]
+    plot_values = [(last_test_accuracies, 'Test accuracy'), (last_val_accuracies, 'Validation accuracy')]
     plot_graph(plot_values, learning_rates,
                title="Learning rate vs accuracies", x_label='Learning rate', y_label='Accuracy')
 
@@ -260,7 +266,44 @@ def question_9_4():
     best_model = find_best_model(models)
     print(
         f"The test accuracy of the best model (learning rate={best_model.learning_rate}) "
-        f"according to the validation accuracy is {max(np.mean(best_model.test_accuracies))}")
+        f"according to the validation accuracy is {best_model.test_accuracies[num_epochs - 1]}")
+
+    loss_values = [(best_model.train_losses, 'Train losses'), (best_model.test_losses, 'Test losses'),
+                   (best_model.val_losses, 'Validation losses')]
+
+    plot_graph(loss_values, x_axis=np.arange(num_epochs)
+               , title='Loss values vs epochs', x_label='Epochs', y_label='Loss Value')
+
+    accuracies = [(best_model.train_accuracies, 'Train accuracy'), (best_model.test_accuracies, 'Test accuracy'),
+                  (best_model.val_accuracies, 'Validation accuracy')]
+    plot_graph(accuracies, x_axis=np.arange(num_epochs),
+               title='Accuracies vs echos', x_label='Epochs', y_label='Accuracies')
+
+
+def trees(max_depth):
+    # read and load the data sets
+    X_train_mc, Y_train_mc = read_data('train_multiclass.csv')
+    X_test_mc, Y_test_mc = read_data('test_multiclass.csv')
+    X_val_mc, Y_val_mc = read_data('validation_multiclass.csv')
+
+    tree_classifier = sklearn.tree.DecisionTreeClassifier(max_depth=max_depth)
+
+    # Train the Decision Tree on the training data
+    tree_classifier.fit(X_train_mc, Y_train_mc)
+
+    # make predictions
+    Y_pred_train = tree_classifier.predict(X_train_mc)
+    Y_pred_test = tree_classifier.predict(X_test_mc)
+    Y_pred_val = tree_classifier.predict(X_val_mc)
+
+    # compute the accuracies of the predictions
+    accuracy_train = np.mean(Y_pred_train == Y_train_mc)
+    accuracy_test = np.mean(Y_pred_test == Y_test_mc)
+    accuracy_val = np.mean(Y_pred_val == Y_val_mc)
+
+    plot_decision_boundaries(tree_classifier, X_val_mc, Y_val_mc, f'Decision tree with max depth {max_depth}')
+    print(
+        f"The train accuracy of the model is: {accuracy_train},The test accuracy of the model is: {accuracy_test},The validation accuracy of the model is: {accuracy_val}")
 
 
 if __name__ == '__main__':
@@ -271,3 +314,5 @@ if __name__ == '__main__':
     # question_7()
     # question_9_3()
     question_9_4()
+    # trees(2)
+    # trees(10)

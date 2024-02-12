@@ -49,13 +49,15 @@ class Ridge_Regression:
 
 class Logistic_Regression(nn.Module):
 
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, learning_rate):
         self.train_accuracies = None
         self.test_accuracies = None
         self.val_accuracies = None
         self.train_losses = None
         self.test_losses = None
         self.val_losses = None
+        self.learning_rate = learning_rate
+        self.accuracies = []
         """
         :param input_dim: the number of features (2- long, lat)
         :param output_dim: the number of classes (2- 0,1)
@@ -103,3 +105,5 @@ class Logistic_Regression(nn.Module):
         self.train_losses = train_losses
         self.test_losses = test_losses
         self.val_losses = val_losses
+
+
