@@ -103,12 +103,3 @@ class Logistic_Regression(nn.Module):
         self.train_losses = train_losses
         self.test_losses = test_losses
         self.val_losses = val_losses
-
-    # def get_train_accuracies(self):
-    #     return self.train_accuracies
-    #
-    # def get_test_accuracies(self):
-    #     return self.test_accuracies
-    #
-    # def get_val_accuracies(self):
-    #     return self.val_accuracies

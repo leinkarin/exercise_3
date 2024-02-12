@@ -1,46 +1,15 @@
-import numpy as np
-
 from models import *
 from helpers import *
 from dataset import *
+from plotters import *
 
 
-def plot_graph_6(lambdas, train_accuracies, test_accuracies, validation_accuracies):
-    plt.plot(lambdas, train_accuracies, label='Training Accuracy')
-    plt.plot(lambdas, test_accuracies, label='Test Accuracy')
-    plt.plot(lambdas, validation_accuracies, label='Validation Accuracy')
-    plt.xlabel('λ')
-    plt.ylabel('Accuracy')
-    plt.title('Accuracy vs. λ')
-    plt.legend()
-    plt.show()
+def question_6():
+    # read and load the data sets
+    X_train, Y_train = read_data('train.csv')
+    X_test, Y_test = read_data('test.csv')
+    X_val, Y_val = read_data('validation.csv')
 
-
-def plot_graph_7(vectors):
-    # extract the x and y coordinates from the vectors
-    x_coords = vectors[:, 0]
-    y_coords = vectors[:, 1]
-
-    magnitudes = np.linalg.norm(vectors, axis=1)
-    normalized_magnitudes = (magnitudes - np.min(magnitudes)) / (np.max(magnitudes) - np.min(magnitudes))
-    alphas = 0.2 + 0.5 * normalized_magnitudes
-
-    # plot the points
-    plt.scatter(x_coords, y_coords, color='blue', label='Vectors', alpha=alphas)
-
-    for i in range(len(vectors) - 1):
-        plt.plot([x_coords[i], x_coords[i + 1]], [y_coords[i], y_coords[i + 1]], color='blue', linestyle='--')
-
-    # add labels and title
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.title('Optimized vector through time')
-
-    plt.legend()
-    plt.show()
-
-
-def question_6(X_train, Y_train, X_test, Y_test, X_val, Y_val):
     lambdas = [0, 2, 4, 6, 8, 10]
 
     models = np.empty(len(lambdas), dtype=object)
@@ -64,7 +33,9 @@ def question_6(X_train, Y_train, X_test, Y_test, X_val, Y_val):
         test_accuracies[i] = np.mean(y_preds_test == Y_test)
         validation_accuracies[i] = np.mean(y_preds_val == Y_val)
 
-    plot_graph_6(lambdas, train_accuracies, test_accuracies, validation_accuracies)
+    plots_values = [(train_accuracies, 'Training Accuracy'), (test_accuracies, 'Test Accuracy'),
+                    (validation_accuracies, 'Validation Accuracy')]
+    plot_graph(plots_values, x_axis=lambdas, title='Accuracy vs. λ', x_label='λ', y_label='Accuracy')
 
     val_best_model_index = np.argmax(validation_accuracies)
     val_best_model_lambda = lambdas[val_best_model_index]
@@ -125,19 +96,7 @@ def load_data(device, X_train, Y_train, X_test, Y_test, X_val, Y_val):
     return train_dataset, test_dataset, val_dataset, train_loader, test_loader, val_loader
 
 
-def plot_loss_values(train_losses, test_losses, val_losses, num_echos):
-    # Plot the loss values through epochs
-    plt.plot(np.arange(num_echos), train_losses, marker='o', color='blue', label='Train losses')
-    plt.plot(np.arange(num_echos), test_losses, marker='o', color='green', label='Test losses')
-    plt.plot(np.arange(num_echos), val_losses, marker='o', color='orange', label='Validation losses')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss Value')
-    plt.title('Loss values vs epochs')
-    plt.legend()
-    plt.show()
-
-
-def init_model(device, train_dataset, learning_rate, step_size, gamma):
+def init_model(device, train_dataset, X_train, learning_rate, step_size, gamma):
     # Instantiate the model
     number_of_classes = len(torch.unique(train_dataset.labels))
     model = Logistic_Regression(X_train.shape[1], number_of_classes)
@@ -193,7 +152,7 @@ def create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, 
                                                                                                 X_val, Y_val)
 
     # Instantiate the model,criterion, optimizer, lr_scheduler
-    model, optimizer, lr_scheduler = init_model(device, train_dataset, learning_rate, step_size, gamma)
+    model, optimizer, lr_scheduler = init_model(device, train_dataset, X_train, learning_rate, step_size, gamma)
     criterion = nn.CrossEntropyLoss()
 
     # Train the model for a few epochs with GPU acceleration
@@ -227,24 +186,46 @@ def create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, 
     return model
 
 
-def question_9_3():
-    num_epochs = 10
-    # create three models with different learning rates
-    model1 = create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate=0.1, num_epochs=num_epochs)
-    model2 = create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, 0.01, num_epochs)
-    model3 = create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, 0.001, num_epochs)
-    print(
-        f"Model with learning rate 0.1: Train Accuracy: {np.mean(model1.train_accuracies):.4f}, Test Accuracy: {np.mean(model1.test_accuracies):.4f}, "
-        f"Validation Accuracy: {np.mean(model1.val_accuracies):.4f}")
-    print(
-        f"Model with learning rate 0.01: Train Accuracy: {np.mean(model2.train_accuracies):.4f}, Test Accuracy: {np.mean(model2.test_accuracies):.4f}, "
-        f"Validation Accuracy: {np.mean(model2.val_accuracies):.4f}")
-    print(
-        f"Model with learning rate 0.001: Train Accuracy: {np.mean(model3.train_accuracies):.4f}, Test Accuracy: {np.mean(model3.test_accuracies):.4f},"
-        f" Validation Accuracy: {np.mean(model3.val_accuracies):.4f}")
+def find_best_model(models):
+    best_model = models[0]
+    for model in models:
+        train_accuracy = np.mean(model.train_accuracies)
+        test_accuracy = np.mean(model.test_accuracies)
+        val_accuracy = np.mean(model.val_accuracies)
+        print(
+            f"Model with learning rate {best_model.learning_rate}: Train Accuracy: {train_accuracy:.4f}, Test Accuracy: {test_accuracy:.4f}, "
+            f"Validation Accuracy: {val_accuracy:.4f}")
 
-    plot_decision_boundaries(model3, X_test, Y_test, "Model with the best validation accuracy (learning rate= 0.001)")
-    plot_loss_values(model3.train_losses, model3.test_losses, model3.val_losses, 10)
+        if val_accuracy > np.mean(best_model.val_accuracies):
+            best_model = model
+
+    return best_model
+
+
+def question_9_3():
+    # read and load the data sets
+    X_train, Y_train = read_data('train.csv')
+    X_test, Y_test = read_data('test.csv')
+    X_val, Y_val = read_data('validation.csv')
+
+    num_epochs = 10
+    learning_rates = [0.1, 0.01, 0.001]
+    models = []
+
+    # create three models with different learning rates
+    for learning_rate in learning_rates:
+        models.append(
+            create_model(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, num_epochs=num_epochs))
+
+    best_model = find_best_model(models)
+
+    plot_decision_boundaries(best_model, X_test, Y_test,
+                             "Model with the best validation accuracy (learning rate= 0.001)")
+    plots_values = [(best_model.train_losses, 'Train losses'), (best_model.test_losses, 'Test losses'),
+                    (best_model.val_losses, 'Validation losses')]
+
+    plot_graph(plots_values, x_axis=np.arange(num_epochs)
+               , title='Loss values vs epochs', x_label='Epochs', y_label='Loss Value')
 
 
 def question_9_4():
@@ -252,23 +233,41 @@ def question_9_4():
     X_train_mc, Y_train_mc = read_data('train_multiclass.csv')
     X_test_mc, Y_test_mc = read_data('test_multiclass.csv')
     X_val_mc, Y_val_mc = read_data('validation_multiclass.csv')
+    num_epochs = 30
+
+    learning_rates = [0.01, 0.001, 0.0003]
+    models = []
 
     # create three models with different learning rates
-    model1 = create_model(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc, learning_rate=0.01,
-                          num_epochs=30)
-    model2 = create_model(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc, 0.001, 30)
-    model3 = create_model(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc, 0.0003, 30)
+    for learning_rate in learning_rates:
+        models.append(
+            create_model(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc, learning_rate,
+                         num_epochs=num_epochs, step_size=5, gamma=0.3))
+
+    # create a list of the mean test and validation accuracies of every model
+    mean_test_accuracies = []
+    mean_val_accuracies = []
+    for model in models:
+        mean_test_accuracies.append(np.mean(model.test_accuracies))
+        mean_val_accuracies.append(np.mean(model.val_accuracies))
+
+    # plot a graph learning rate vs accuracies
+    plot_values = [(mean_test_accuracies, 'Test accuracy'), (mean_val_accuracies, 'Validation accuracy')]
+    plot_graph(plot_values, learning_rates,
+               title="Learning rate vs accuracies", x_label='Learning rate', y_label='Accuracy')
+
+    # find best model
+    best_model = find_best_model(models)
+    print(
+        f"The test accuracy of the best model (learning rate={best_model.learning_rate}) "
+        f"according to the validation accuracy is {max(np.mean(best_model.test_accuracies))}")
 
 
 if __name__ == '__main__':
     np.random.seed(42)
     torch.manual_seed(42)
 
-    # read and load the data sets
-    X_train, Y_train = read_data('train.csv')
-    X_test, Y_test = read_data('test.csv')
-    X_val, Y_val = read_data('validation.csv')
-
-    # question_6(X_train, Y_train, X_test, Y_test, X_val, Y_val)
+    # question_6()
     # question_7()
-    question_9_3()
+    # question_9_3()
+    question_9_4()
