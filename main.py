@@ -306,13 +306,115 @@ def trees(max_depth):
         f"The train accuracy of the model is: {accuracy_train},The test accuracy of the model is: {accuracy_test},The validation accuracy of the model is: {accuracy_val}")
 
 
+def bonus():
+    # read and load the data sets
+    X_train_mc, Y_train_mc = read_data('train_multiclass.csv')
+    X_test_mc, Y_test_mc = read_data('test_multiclass.csv')
+    X_val_mc, Y_val_mc = read_data('validation_multiclass.csv')
+
+    num_epochs = 30
+    learning_rate = 0.01
+    lambdas = [0, 2, 4, 6, 8, 10]
+    best_model = None
+    best_val_accuracy = 0
+
+    for lambd in lambdas:
+        model = create_model_with_ridge(X_train_mc, Y_train_mc, X_test_mc, Y_test_mc, X_val_mc, Y_val_mc,
+                                        learning_rate, num_epochs=num_epochs, lambda_val=lambd)
+        val_accuracy = model.val_accuracies[-1]
+        if val_accuracy > best_val_accuracy:
+            best_model = model
+            best_val_accuracy = val_accuracy
+
+    print(f"The test accuracy of the best model (lambda={best_model.lambda_val}) "
+          f"according to the validation accuracy is {best_model.test_accuracies[-1]}")
+
+    plot_decision_boundaries(best_model, X_val_mc, Y_val_mc, f'Desicion boundries of the best model (λ=0)')
+
+
+def create_model_with_ridge(X_train, Y_train, X_test, Y_test, X_val, Y_val, learning_rate, num_epochs, lambda_val):
+    device = check_gpu()
+
+    # Create datasets and data loaders
+    train_dataset, test_dataset, val_dataset, train_loader, test_loader, val_loader = load_data(device, X_train,
+                                                                                                Y_train, X_test, Y_test,
+                                                                                                X_val, Y_val)
+
+    # Instantiate the model, criterion, optimizer, lr_scheduler
+    model, optimizer, lr_scheduler = init_model(device, train_dataset, X_train, learning_rate, 10, 0.3)
+    criterion = nn.CrossEntropyLoss()
+
+    # define numpy arrays to keep all the values
+    train_loss_values = np.zeros(num_epochs)
+    test_loss_values = np.zeros(num_epochs)
+    val_loss_values = np.zeros(num_epochs)
+    train_accuracies = np.zeros(num_epochs)
+    test_accuracies = np.zeros(num_epochs)
+    val_accuracies = np.zeros(num_epochs)
+
+    for epoch in range(num_epochs):
+        # Train the model
+        train_loss_values[epoch], train_accuracies[epoch] = train_model_with_ridge(device, model, optimizer, criterion,
+                                                                                   lr_scheduler,
+                                                                                   train_dataset, train_loader,
+                                                                                   lambda_val)
+
+        # Evaluate the model on the test set
+        test_loss_values[epoch], test_accuracies[epoch] = evaluate_model(device, model, criterion,
+                                                                         test_dataset, test_loader)
+
+        # Evaluate the model on the validation set
+        val_loss_values[epoch], val_accuracies[epoch] = evaluate_model(device, model, criterion,
+                                                                       val_dataset, val_loader)
+
+    print(f"Model with lambda={lambda_val}: Train Accuracy: {np.mean(train_accuracies):.4f}, "
+          f"Test Accuracy: {np.mean(test_accuracies):.4f}, Validation Accuracy: {np.mean(val_accuracies):.4f}")
+
+    model.set_accuracies(train_accuracies, test_accuracies, val_accuracies)
+    model.set_losses(train_loss_values, test_loss_values, val_loss_values)
+    model.lambda_val = lambda_val
+
+    return model
+
+
+def train_model_with_ridge(device, model, optimizer, criterion, lr_scheduler, dataset, data_loader, lambda_val):
+    loss_values = []
+    ep_correct_preds = 0.
+    model.train()  # set the model to training mode
+    for inputs, labels in data_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs.squeeze(), labels)
+
+        # Add ridge regularization to the loss
+        l2_reg = 0
+        for param in model.parameters():
+            l2_reg += torch.norm(param) ** 2
+        loss += lambda_val * l2_reg
+
+        loss.backward()
+        optimizer.step()
+
+        # Store the loss values for plotting
+        loss_values.append(loss.item())
+        ep_correct_preds += torch.sum(torch.argmax(outputs, dim=1) == labels).item()
+
+    lr_scheduler.step()
+
+    mean_loss = np.mean(loss_values)
+    ep_train_accuracy = ep_correct_preds / len(dataset)
+    return mean_loss, ep_train_accuracy
+
+
 if __name__ == '__main__':
     np.random.seed(42)
     torch.manual_seed(42)
 
-    # question_6()
-    # question_7()
-    # question_9_3()
+    question_6()
+    question_7()
+    question_9_3()
     question_9_4()
-    # trees(2)
-    # trees(10)
+    trees(2)
+    trees(10)
+    bonus()
